@@ -5,11 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.google_auth import oauth
 
 
-from app.controllers.auth import get_current_user, login_user
+from app.controllers.auth import (
+    confirm_email_verification,
+    get_current_user,
+    login_user,
+    request_email_verification,
+    request_password_reset,
+    reset_password,
+)
 from app.controllers.google_auth import handle_google_user
 from app.database.session import get_db
 from app.core.config import settings
-from app.schemas.user import UserLogin, UserResponse
+from app.schemas.user import (
+    EmailVerificationConfirm,
+    EmailVerificationRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    UserLogin,
+    UserResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -31,6 +45,82 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed",
+        )
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Initiate password reset (token returned for dev/testing; email in production).
+    """
+    try:
+        return await request_password_reset(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during forgot password")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to start password reset",
+        )
+
+
+@router.post("/reset-password")
+async def reset_password_endpoint(
+    payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db)
+):
+    """
+    Complete password reset with a valid token.
+    """
+    try:
+        return await reset_password(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during password reset")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Password reset failed",
+        )
+
+
+@router.post("/request-email-verification")
+async def request_email_verification_endpoint(
+    payload: EmailVerificationRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Ask for an email verification token.
+    """
+    try:
+        return await request_email_verification(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during email verification request")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to request verification",
+        )
+
+
+@router.post("/verify-email")
+async def verify_email(
+    payload: EmailVerificationConfirm, db: AsyncSession = Depends(get_db)
+):
+    """
+    Confirm email address with verification token.
+    """
+    try:
+        return await confirm_email_verification(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during email verification")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email verification failed",
         )
 
 

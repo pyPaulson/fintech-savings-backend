@@ -6,10 +6,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.user import User
-from app.schemas.user import UserLogin
+from app.schemas.user import (
+    EmailVerificationConfirm,
+    EmailVerificationRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    UserLogin,
+)
 from app.core.config import settings
-from app.utils.jwt import create_access_token, decode_access_token
-from app.utils.security import verify_password
+from app.utils.jwt import (
+    create_access_token,
+    create_email_verification_token,
+    create_password_reset_token,
+    decode_access_token,
+    decode_email_verification_token,
+    decode_password_reset_token,
+)
+from app.utils.security import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -130,3 +143,127 @@ async def get_current_user(request: Request, db: AsyncSession) -> User:
         )
 
     return db_user
+
+
+async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession):
+    try:
+        result = await db.execute(select(User).where(User.email == payload.email))
+        user = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("Database error during password reset request")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during password reset",
+        )
+
+    if not user:
+        # Avoid leaking which emails exist
+        return {"message": "If the email exists, a reset link has been generated"}
+
+    token = create_password_reset_token({"user_id": user.id})
+    # In a real system, email the token. Returning for development/testing purposes.
+    return {"message": "Password reset token generated", "reset_token": token}
+
+
+async def reset_password(payload: PasswordResetConfirm, db: AsyncSession):
+    try:
+        data = decode_password_reset_token(payload.token)
+        user_id = data["user_id"]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("Database error during password reset")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during password reset",
+        )
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token",
+        )
+
+    try:
+        user.password_hash = hash_password(payload.new_password)
+        # Optionally re-verify on password reset
+        user.is_verified = True
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Database error while saving new password")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not reset password",
+        )
+
+    return {"message": "Password reset successful"}
+
+
+async def request_email_verification(payload: EmailVerificationRequest, db: AsyncSession):
+    try:
+        result = await db.execute(select(User).where(User.email == payload.email))
+        user = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("Database error during email verification request")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during email verification",
+        )
+
+    if not user:
+        return {"message": "If the email exists, a verification link has been generated"}
+
+    token = create_email_verification_token({"user_id": user.id})
+    return {"message": "Verification token generated", "verification_token": token}
+
+
+async def confirm_email_verification(payload: EmailVerificationConfirm, db: AsyncSession):
+    try:
+        data = decode_email_verification_token(payload.token)
+        user_id = data["user_id"]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("Database error during email confirmation")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during email confirmation",
+        )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token",
+        )
+
+    try:
+        user.is_verified = True
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Database error while verifying email")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not verify email",
+        )
+
+    return {"message": "Email verified successfully"}
