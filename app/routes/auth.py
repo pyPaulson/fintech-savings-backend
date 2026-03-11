@@ -2,9 +2,13 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.utils.google_auth import oauth
+
 
 from app.controllers.auth import get_current_user, login_user
+from app.controllers.google_auth import handle_google_user
 from app.database.session import get_db
+from app.core.config import settings
 from app.schemas.user import UserLogin, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -44,4 +48,67 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch current user",
+        )
+
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    try:
+        redirect_uri = settings.GOOGLE_REDIRECT_URI
+        return await oauth.google.authorize_redirect(request, redirect_uri)
+    except Exception:
+        logger.exception("Unhandled error during Google login redirect")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to initiate Google login",
+        )
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo")
+
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing Google user information",
+            )
+
+        _, jwt_token = await handle_google_user(user_info, db)
+
+        response.set_cookie(
+            key="access_token",
+            value=jwt_token,
+            httponly=True,
+            samesite="lax",
+            secure=False,
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
+
+        return {"message": "Google login successful"}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during Google login callback")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google login failed",
+        )
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the authentication cookie to log the user out."""
+    try:
+        response.delete_cookie("access_token")
+        return {"message": "Logout successful"}
+    except Exception:
+        logger.exception("Unhandled error during logout")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Logout failed",
         )
