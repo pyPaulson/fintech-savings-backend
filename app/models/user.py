@@ -32,6 +32,9 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
 
+    google_id = Column(String, unique=True, nullable=True)
+    auth_provider = Column(String, default="local")
+
     profile_picture = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
