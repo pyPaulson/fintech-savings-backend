@@ -1,16 +1,10 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Enum, func, Date
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-import enum
 import uuid
 
-Base = declarative_base()
-
-
-class GenderEnum(str, enum.Enum):
-    male = "male"
-    female = "female"
+from app.models.base import Base
+from app.models.enums import GenderEnum
 
 
 class User(Base):
@@ -42,3 +36,4 @@ class User(Base):
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     accounts = relationship("Account", back_populates="user")
+    transactions = relationship("Transaction", back_populates="user")

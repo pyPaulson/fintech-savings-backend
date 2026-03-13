@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from alembic import context
 
 import asyncio
-from app.models.user import Base 
+from app.models.base import Base
+# Ensure models are imported so their tables are registered with Base.metadata
+from app.models import user  # noqa: F401
+from app.models import account  # noqa: F401
+from app.models import transaction  # noqa: F401
 
 config = context.config
 fileConfig(config.config_file_name)

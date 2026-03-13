@@ -2,15 +2,9 @@ import uuid
 from sqlalchemy import Column, String, ForeignKey, Numeric, Enum, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.database.session import Base
-import enum
 
-
-class AccountType(str, enum.Enum):
-    FLEX = "flex"
-    EMERGENCY = "emergency"
-    GOAL = "goal"
-    LOCKED = "locked"
+from app.models.base import Base
+from app.models.enums import AccountType
 
 
 class Account(Base):
@@ -29,3 +23,4 @@ class Account(Base):
     is_active = Column(Boolean, default=True)
 
     user = relationship("User", back_populates="accounts")
+    transactions = relationship("Transaction", back_populates="account")

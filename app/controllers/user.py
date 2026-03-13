@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import logging
 
 from app.models.user import User
+from app.services.account_service import create_default_accounts
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.security import hash_password
 
@@ -54,6 +55,7 @@ async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = Fa
         )
 
         db.add(new_user)
+        await create_default_accounts(new_user.id, db) 
         await db.commit()
         await db.refresh(new_user)
         return new_user
