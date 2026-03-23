@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str
 
+    # Rate limiting
+    RATE_LIMIT_LOGIN_ATTEMPTS: int = 5
+    RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 300
+
     class Config:
         env_file = ".env"
 

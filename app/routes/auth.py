@@ -16,6 +16,7 @@ from app.controllers.auth import (
 from app.controllers.google_auth import handle_google_user
 from app.database.session import get_db
 from app.core.config import settings
+from app.utils.rate_limit import check_rate_limit
 from app.schemas.user import (
     EmailVerificationConfirm,
     EmailVerificationRequest,
@@ -29,9 +30,25 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
 
+async def _rate_limit_login(request: Request):
+    forwarded_for = request.headers.get("x-forwarded-for")
+    client_ip = (forwarded_for.split(",")[0].strip() if forwarded_for else None) or (
+        request.client.host if request.client else "unknown"
+    )
+    await check_rate_limit(
+        "login",
+        client_ip,
+        limit=settings.RATE_LIMIT_LOGIN_ATTEMPTS,
+        window_seconds=settings.RATE_LIMIT_LOGIN_WINDOW_SECONDS,
+    )
+
+
 @router.post("/login")
 async def login(
-    user: UserLogin, response: Response, db: AsyncSession = Depends(get_db)
+    user: UserLogin,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_rate_limit_login),
 ):
     """
     Log in user
