@@ -1,16 +1,16 @@
-# Fintech Savings Backend
+# Fintech Savings Backend (by Paulson)
 
-FastAPI + PostgreSQL backend for a savings/transactions platform. It provides user management, authentication (email/password + Google OAuth), accounts, and transactions with admin controls and basic rate limiting.
+I'm Paulson, and this is the backend I built for a savings + transactions platform. It runs on FastAPI with PostgreSQL, keeps auth tight (cookies or Bearer tokens), and ships rate limits so brute force logins bounce. I keep everything async because speed matters when money moves.
 
-## Stack
+## Stack (my toolkit)
 - Python 3.13, FastAPI, Pydantic v2
 - Async SQLAlchemy + asyncpg
 - Alembic for migrations
-- JWT auth (access tokens in cookies or `Authorization: Bearer`)
-- In-process sliding-window rate limiter for login attempts
+- JWT auth (cookie or `Authorization: Bearer`)
+- Sliding-window login rate limiter (in-process)
 
-## Project Layout
-- `app/main.py` – FastAPI app wiring
+## How I laid it out
+- `app/main.py` – wires the app
 - `app/routes/` – HTTP routes (auth, users, accounts, transactions)
 - `app/controllers/` – request/business logic per domain
 - `app/services/` – lower-level services (e.g., transaction_service)
@@ -19,13 +19,13 @@ FastAPI + PostgreSQL backend for a savings/transactions platform. It provides us
 - `app/database/session.py` – async DB engine/session
 - `migrations/` – Alembic migrations
 
-## Prerequisites
+## Before you start
 - Python 3.13
-- PostgreSQL reachable at the host/port you configure
-- `pip install --upgrade pip` recommended
+- PostgreSQL at the host/port you configure
+- `pip install --upgrade pip` (I always do this first)
 
-## Environment Variables (`.env`)
-Populate a `.env` file in the repo root:
+## Environment (`.env`)
+Drop a `.env` in the repo root:
 
 ```
 POSTGRES_USER=
@@ -43,27 +43,27 @@ RATE_LIMIT_LOGIN_ATTEMPTS=5    # optional override
 RATE_LIMIT_LOGIN_WINDOW_SECONDS=300
 ```
 
-## Setup
+## Spin it up (my flow)
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-alembic upgrade head  # creates tables
+alembic upgrade head  # create tables
 ```
 
-## Running the API
+Run the API:
 ```bash
 uvicorn app.main:app --reload
 ```
-App runs on http://localhost:8000 with Swagger UI at http://localhost:8000/docs.
+It serves http://localhost:8000 and Swagger UI at http://localhost:8000/docs.
 
-## Authentication
-- Login sets `access_token` HTTP-only cookie; you can also send `Authorization: Bearer <token>`.
+## Auth rules (how I guard doors)
+- Login sets an HTTP-only `access_token` cookie; Bearer tokens also work.
 - Tokens expire after `ACCESS_TOKEN_EXPIRE_MINUTES`.
-- First admin can be created without auth; subsequent admin creation requires an existing admin token.
-- Rate limiting: `/auth/login` allows `RATE_LIMIT_LOGIN_ATTEMPTS` per `RATE_LIMIT_LOGIN_WINDOW_SECONDS` per client IP; exceeding returns 429 with `Retry-After` header.
+- First admin can be created open; after that you need an admin token.
+- Rate limit on `/auth/login`: `RATE_LIMIT_LOGIN_ATTEMPTS` per `RATE_LIMIT_LOGIN_WINDOW_SECONDS` per client IP. Exceeding returns 429 + `Retry-After`.
 
-## Key Endpoints (summary)
+## Endpoints I reach for
 `[POST] /auth/login` — email/password login (rate limited)
 `[POST] /auth/forgot-password` — issue reset token (dev returns token)
 `[POST] /auth/reset-password` — reset password with token
@@ -90,31 +90,30 @@ App runs on http://localhost:8000 with Swagger UI at http://localhost:8000/docs.
 `[POST] /transactions/{reference}/complete` — mark complete (admin)
 `[POST] /transactions/{reference}/fail` — mark failed (admin)
 
-## Sample Usage
+## Sample calls (with me as the user)
 ```bash
-# Register a user
+# Register me
 curl -X POST http://localhost:8000/users/register \
   -H 'Content-Type: application/json' \
-  -d '{"first_name":"Ada","last_name":"Lovelace","email":"ada@example.com","password":"P@ssw0rd!"}'
+  -d '{"first_name":"Paulson","last_name":"Developer","email":"paulson@example.com","password":"P@ssw0rd!"}'
 
 # Login (cookie set in response)
 curl -i -X POST http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"ada@example.com","password":"P@ssw0rd!"}'
+  -d '{"email":"paulson@example.com","password":"P@ssw0rd!"}'
 
 # Authenticated request using Bearer token
 curl -H 'Authorization: Bearer <token>' http://localhost:8000/users/me
 ```
 
 ## Migrations
-- Create migration: `alembic revision --autogenerate -m "message"`
+- Create: `alembic revision --autogenerate -m "message"`
 - Apply latest: `alembic upgrade head`
 
 ## Testing
-- Placeholder `tests/` directory exists; add `pytest`-style async tests using `httpx.AsyncClient` and a test database.
+- `tests/` is ready for `pytest` async tests (use `httpx.AsyncClient` + a test DB).
 
-## Troubleshooting
-- 429 on login: wait for `Retry-After` seconds or raise limits in `.env`.
-- DB connection errors: verify `POSTGRES_*` values and that PostgreSQL is reachable.
-- Missing Google creds: remove/ignore Google routes or supply valid OAuth values.
-
+## Troubleshooting (my quick checks)
+- 429 on login: wait for `Retry-After` or bump limits in `.env`.
+- DB connection errors: double-check `POSTGRES_*` and that PostgreSQL is reachable.
+- No Google creds: drop the Google routes or set valid OAuth values.
