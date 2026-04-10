@@ -1,10 +1,11 @@
-from typing import List
+from __future__ import annotations
+
+import logging
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-import logging
 
 from app.models.user import User
 from app.services.account_service import create_default_accounts
@@ -84,10 +85,6 @@ async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = Fa
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected error while creating user",
         )
-
-
-async def create_admin(user: UserCreate, db: AsyncSession) -> User:
-    return await create_user(user, db, as_admin=True)
 
 
 async def update_user_profile(user: User, updates: UserUpdate, db: AsyncSession) -> User:
@@ -170,28 +167,4 @@ async def deactivate_user(user: User, db: AsyncSession) -> User:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected error while deactivating user",
-        )
-
-
-async def list_users(db: AsyncSession) -> List[User]:
-    try:
-        result = await db.execute(select(User))
-        return result.scalars().all()
-    except SQLAlchemyError:
-        logger.exception("Database error while listing users")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error while fetching users",
-        )
-
-
-async def admins_exist(db: AsyncSession) -> bool:
-    try:
-        result = await db.execute(select(User).where(User.is_admin.is_(True)))
-        return result.scalars().first() is not None
-    except SQLAlchemyError:
-        logger.exception("Database error while checking for existing admins")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error while checking admins",
         )

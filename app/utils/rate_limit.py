@@ -1,4 +1,3 @@
-"""Lightweight sliding-window rate limiter for in-process use."""
 
 import asyncio
 from collections import deque
