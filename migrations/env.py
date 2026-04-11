@@ -10,6 +10,7 @@ from app.models.base import Base
 from app.models import user  # noqa: F401
 from app.models import account  # noqa: F401
 from app.models import transaction  # noqa: F401
+from app.models import savings_goal  # noqa: F401
 
 config = context.config
 fileConfig(config.config_file_name)

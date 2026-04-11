@@ -37,3 +37,4 @@ class User(Base):
 
     accounts = relationship("Account", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
+    savings_goals = relationship("SavingsGoal", back_populates="user")

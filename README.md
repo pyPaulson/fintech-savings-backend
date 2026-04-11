@@ -15,7 +15,7 @@ I’m Paulson. This repo is the API for a savings-style app: users, accounts (fl
 ## How I organized the code
 
 - `app/main.py` — app factory, lifespan, middleware  
-- `app/routes/` — routers (auth, users, accounts, transactions, admin)  
+- `app/routes/` — routers (auth, users, accounts, transactions, goals, admin)  
 - `app/controllers/` — what each request actually does  
 - `app/services/` — things like creating transactions and default accounts  
 - `app/models/` — SQLAlchemy models and enums  
@@ -115,7 +115,17 @@ API: http://127.0.0.1:8000 — OpenAPI docs at `/docs`.
 - `GET /accounts/{account_id}`  
 - `POST /transactions/` — create  
 - `GET /transactions/` — list mine  
-- `POST /transactions/{reference}/complete` and `.../fail` — admin completion flows
+- `POST /transactions/{reference}/complete` and `.../fail` — admin completion flows  
+
+**Savings goals**
+
+Each goal gets its own `goal` ledger account. You set the target amount, start and end dates (your horizon), how often you want to deposit (`daily` / `weekly` / `biweekly` / `monthly`), and how much you plan to put in each period. Deposits post immediately as completed `goal_deposit` transactions; when the balance hits the target, the goal flips to `completed`.
+
+- `POST /goals/` — create a goal  
+- `GET /goals/` — list yours (balance + progress %)  
+- `GET /goals/{goal_id}` — detail  
+- `PATCH /goals/{goal_id}` — rename or change status (`paused`, `cancelled`, etc.)  
+- `POST /goals/{goal_id}/deposit` — body: `amount`, optional `description`
 
 Exact paths are easiest to read from `/docs` — I’m not going to duplicate every admin route here.
 

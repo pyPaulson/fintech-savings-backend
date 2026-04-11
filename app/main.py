@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.routes import admin, user, auth, account, transaction
+from app.routes import admin, user, auth, account, transaction, goal
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(transaction.router)
+app.include_router(goal.router)
 
 
 @app.get("/")

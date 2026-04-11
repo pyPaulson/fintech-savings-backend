@@ -33,3 +33,8 @@ class Account(Base):
 
     user = relationship("User", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account")
+    savings_goal = relationship(
+        "SavingsGoal",
+        back_populates="account",
+        uselist=False,
+    )
