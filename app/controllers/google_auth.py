@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -26,8 +27,10 @@ async def handle_google_user(user_info: dict, db: AsyncSession):
             detail="Google account has no email",
         )
 
+    email = email.strip().lower()
+
     try:
-        result = await db.execute(select(User).where(User.email == email))
+        result = await db.execute(select(User).where(func.lower(User.email) == email))
         existing_user = result.scalar_one_or_none()
 
         if existing_user:
