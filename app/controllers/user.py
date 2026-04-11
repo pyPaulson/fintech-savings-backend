@@ -63,7 +63,8 @@ async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = Fa
 
         db.add(new_user)
         await db.flush()
-        await create_default_accounts(new_user.id, db)
+        if not as_admin:
+            await create_default_accounts(new_user.id, db)
         await db.commit()
         await db.refresh(new_user)
 
