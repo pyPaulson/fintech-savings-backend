@@ -3,21 +3,30 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException, status 
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.user import User
 from app.schemas.user import PasswordResetConfirm, PasswordResetRequest
+from app.services.email_delivery import send_password_reset_email
+from app.utils.email_sender import EmailSendError
 from app.utils.jwt import create_password_reset_token, decode_password_reset_token
 from app.utils.security import hash_password
 
 logger = logging.getLogger(__name__)
 
+_PASSWORD_RESET_ACK = (
+    "If an account exists for this email, you will receive password reset instructions shortly."
+)
+
 
 async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession):
     try:
-        result = await db.execute(select(User).where(User.email == payload.email))
+        result = await db.execute(
+            select(User).where(func.lower(User.email) == payload.email)
+        )
         user = result.scalar_one_or_none()
     except SQLAlchemyError:
         logger.exception("Database error during password reset request")
@@ -26,12 +35,21 @@ async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession
             detail="Database error during password reset",
         )
 
-    if not user:
-        return {"message": "If the email exists, a reset link has been generated"}
+    if not user or not user.is_active:
+        return {"message": _PASSWORD_RESET_ACK}
 
     token = create_password_reset_token({"user_id": user.id})
-    # In production, email the token. Returned here for dev/testing.
-    return {"message": "Password reset token generated", "reset_token": token}
+    try:
+        await send_password_reset_email(
+            to_email=user.email,
+            recipient_name=user.first_name,
+            token=token,
+        )
+    except EmailSendError:
+        logger.exception("Failed to send password reset email user_id=%s", user.id)
+    except Exception:
+        logger.exception("Unexpected error sending password reset email user_id=%s", user.id)
+    return {"message": _PASSWORD_RESET_ACK}
 
 
 async def reset_password(payload: PasswordResetConfirm, db: AsyncSession):

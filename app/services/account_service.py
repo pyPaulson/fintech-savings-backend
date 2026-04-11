@@ -12,26 +12,16 @@ from app.models.account import Account, AccountType
 logger = logging.getLogger(__name__)
 
 
-async def create_default_accounts(user_id: UUID, db: AsyncSession):
-    try:
-        flex_account = Account(
-            user_id=user_id, account_type=AccountType.FLEX, currency="GHS", balance=0
-        )
-        emergency_account = Account(
-            user_id=user_id, account_type=AccountType.EMERGENCY, currency="GHS", balance=0
-        )
-        db.add_all([flex_account, emergency_account])
-        await db.commit()
-        await db.refresh(flex_account)
-        await db.refresh(emergency_account)
-        return [flex_account, emergency_account]
-    except SQLAlchemyError:
-        await db.rollback()
-        logger.exception("Database error while creating default accounts")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error while creating accounts",
-        )
+async def create_default_accounts(user_id: UUID, db: AsyncSession) -> list[Account]:
+    """Attach default accounts to the session. Caller must commit the transaction."""
+    flexi_account = Account(
+        user_id=user_id, account_type=AccountType.FLEXI, currency="GHS", balance=0
+    )
+    emergency_account = Account(
+        user_id=user_id, account_type=AccountType.EMERGENCY, currency="GHS", balance=0
+    )
+    db.add_all([flexi_account, emergency_account])
+    return [flexi_account, emergency_account]
 
 
 async def update_account_balance(

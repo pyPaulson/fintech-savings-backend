@@ -3,13 +3,17 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.user import User
 from app.services.account_service import create_default_accounts
+from app.services.email_delivery import send_verification_email
 from app.schemas.user import UserCreate, UserUpdate
+from app.utils.email_sender import EmailSendError
+from app.utils.jwt import create_email_verification_token
 from app.utils.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -26,7 +30,9 @@ def _resolve_unique_conflict(exc: IntegrityError) -> str:
 
 async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = False) -> User:
     try:
-        result = await db.execute(select(User).where(User.email == user.email))
+        result = await db.execute(
+            select(User).where(func.lower(User.email) == user.email)
+        )
         existing_user = result.scalar_one_or_none()
         if existing_user:
             raise HTTPException(
@@ -56,9 +62,30 @@ async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = Fa
         )
 
         db.add(new_user)
-        await create_default_accounts(new_user.id, db) 
+        await db.flush()
+        await create_default_accounts(new_user.id, db)
         await db.commit()
         await db.refresh(new_user)
+
+        if not as_admin and not new_user.is_verified:
+            token = create_email_verification_token({"user_id": new_user.id})
+            try:
+                await send_verification_email(
+                    to_email=new_user.email,
+                    recipient_name=new_user.first_name,
+                    token=token,
+                )
+            except EmailSendError:
+                logger.exception(
+                    "Failed to send verification email after signup user_id=%s",
+                    new_user.id,
+                )
+            except Exception:
+                logger.exception(
+                    "Unexpected error sending verification email after signup user_id=%s",
+                    new_user.id,
+                )
+
         return new_user
 
     except HTTPException:

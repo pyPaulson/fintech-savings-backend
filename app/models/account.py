@@ -14,7 +14,16 @@ class Account(Base):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
-    account_type = Column(Enum(AccountType), nullable=False)
+    account_type = Column(
+        Enum(
+            AccountType,
+            name="accounttype",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+            create_type=False,
+        ),
+        nullable=False,
+    )
 
     currency = Column(String, default="GHS")
 

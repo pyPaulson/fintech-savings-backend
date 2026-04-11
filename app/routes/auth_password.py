@@ -16,7 +16,7 @@ async def forgot_password(
     payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)
 ):
     """
-    Initiate password reset (token returned for dev/testing; email in production).
+    Initiate password reset. A reset link is sent via email when the account exists.
     """
     try:
         return await request_password_reset(payload, db)

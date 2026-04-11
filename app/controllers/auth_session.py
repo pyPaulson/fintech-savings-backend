@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import HTTPException, Request, Response, status
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -41,7 +42,9 @@ def _extract_token_from_request(request: Request) -> str:
 
 async def login_user(user: UserLogin, db: AsyncSession, response: Response):
     try:
-        result = await db.execute(select(User).where(User.email == user.email))
+        result = await db.execute(
+            select(User).where(func.lower(User.email) == user.email)
+        )
         db_user = result.scalar_one_or_none()
 
         try:

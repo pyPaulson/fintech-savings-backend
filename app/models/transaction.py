@@ -28,7 +28,13 @@ class Transaction(Base):
     )
 
     type = Column(
-        Enum(TransactionType),
+        Enum(
+            TransactionType,
+            name="transactiontype",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+            create_type=False,
+        ),
         nullable=False,
     )
 
@@ -44,7 +50,13 @@ class Transaction(Base):
     )
 
     status = Column(
-        Enum(TransactionStatus),
+        Enum(
+            TransactionStatus,
+            name="transactionstatus",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+            create_type=False,
+        ),
         default=TransactionStatus.PENDING,
         nullable=False,
     )

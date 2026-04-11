@@ -1,119 +1,156 @@
-# Fintech Savings Backend (by Paulson)
+# Fintech Savings Backend
 
-I'm Paulson, and this is the backend I built for a savings + transactions platform. It runs on FastAPI with PostgreSQL, keeps auth tight (cookies or Bearer tokens), and ships rate limits so brute force logins bounce. I keep everything async because speed matters when money moves.
+I’m Paulson. This repo is the API for a savings-style app: users, accounts (flexi, emergency, etc.), transactions, and auth that doesn’t feel bolted on. I built it with FastAPI and PostgreSQL, async end to end, because I didn’t want the boring stuff to get slow when traffic shows up.
 
-## Stack (my toolkit)
-- Python 3.13, FastAPI, Pydantic v2
-- Async SQLAlchemy + asyncpg
-- Alembic for migrations
-- JWT auth (cookie or `Authorization: Bearer`)
-- Sliding-window login rate limiter (in-process)
+## What’s in the stack
 
-## How I laid it out
-- `app/main.py` – wires the app
-- `app/routes/` – HTTP routes (auth, users, accounts, transactions)
-- `app/controllers/` – request/business logic per domain
-- `app/services/` – lower-level services (e.g., transaction_service)
-- `app/models/` – SQLAlchemy models and enums
-- `app/schemas/` – Pydantic request/response models
-- `app/database/session.py` – async DB engine/session
-- `migrations/` – Alembic migrations
+- Python 3.13, FastAPI, Pydantic v2  
+- Async SQLAlchemy + asyncpg  
+- Alembic for schema changes  
+- JWTs (HTTP-only cookie or `Authorization: Bearer`)  
+- Resend + Jinja2 templates for transactional email (verify email, password reset)  
+- Google OAuth wired up if you fill the Google env vars  
+- In-process rate limiting on login so password stuffing isn’t free
 
-## Before you start
-- Python 3.13
-- PostgreSQL at the host/port you configure
-- `pip install --upgrade pip` (I always do this first)
+## How I organized the code
 
-## Environment (`.env`)
-Drop a `.env` in the repo root:
+- `app/main.py` — app factory, lifespan, middleware  
+- `app/routes/` — routers (auth, users, accounts, transactions, admin)  
+- `app/controllers/` — what each request actually does  
+- `app/services/` — things like creating transactions and default accounts  
+- `app/models/` — SQLAlchemy models and enums  
+- `app/schemas/` — request/response shapes  
+- `app/templates/` — HTML email templates  
+- `app/database/session.py` — async engine and sessions  
+- `migrations/` — Alembic
 
-```
+## Before you run anything
+
+- Python 3.13  
+- PostgreSQL running and reachable  
+- I usually bump pip first: `pip install --upgrade pip`
+
+## Environment variables
+
+Put a `.env` in the project root. Here’s what I use (fill in your own secrets):
+
+```env
+# Database
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 POSTGRES_DB=
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-SECRET_KEY=change-me
+
+# JWT
+SECRET_KEY=change-me-to-something-long-and-random
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
-GOOGLE_CLIENT_ID=...           # optional, only if using Google OAuth
-GOOGLE_CLIENT_SECRET=...
+
+# Google OAuth (only if you use Google login)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
-RATE_LIMIT_LOGIN_ATTEMPTS=5    # optional override
+
+# Rate limits (optional; defaults are fine)
+RATE_LIMIT_LOGIN_ATTEMPTS=5
 RATE_LIMIT_LOGIN_WINDOW_SECONDS=300
+
+# Email (Resend) — if EMAIL_ENABLED is true, RESEND_API_KEY is required
+EMAIL_ENABLED=true
+RESEND_API_KEY=re_...
+EMAIL_FROM=Fintech Savings <onboarding@resend.dev>
+FRONTEND_BASE_URL=http://localhost:3000
+PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-## Spin it up (my flow)
+A few notes from my own testing:
+
+- With `onboarding@resend.dev`, Resend only delivers test mail to the address you used to sign up on resend.com — so register in the app with that same email, or verify a domain and change `EMAIL_FROM` for real sends.  
+- `PUBLIC_API_BASE_URL` is the link the verification email uses (`/auth/verify-email/click`). It has to be a URL your browser can open (same host/port as your API).  
+- If you’re not sending mail locally, set `EMAIL_ENABLED=false` and you can skip the Resend key.
+
+## Run it locally
+
 ```bash
-python -m venv venv
-source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-alembic upgrade head  # create tables
-```
-
-Run the API:
-```bash
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
-It serves http://localhost:8000 and Swagger UI at http://localhost:8000/docs.
 
-## Auth rules (how I guard doors)
-- Login sets an HTTP-only `access_token` cookie; Bearer tokens also work.
-- Tokens expire after `ACCESS_TOKEN_EXPIRE_MINUTES`.
-- First admin can be created open; after that you need an admin token.
-- Rate limit on `/auth/login`: `RATE_LIMIT_LOGIN_ATTEMPTS` per `RATE_LIMIT_LOGIN_WINDOW_SECONDS` per client IP. Exceeding returns 429 + `Retry-After`.
+API: http://127.0.0.1:8000 — OpenAPI docs at `/docs`.
 
-## Endpoints I reach for
-`[POST] /auth/login` — email/password login (rate limited)
-`[POST] /auth/forgot-password` — issue reset token (dev returns token)
-`[POST] /auth/reset-password` — reset password with token
-`[POST] /auth/request-email-verification` — issue verification token
-`[POST] /auth/verify-email` — confirm email
-`[GET] /auth/me` — current user
-`[GET] /auth/google/login` and `/auth/google/callback` — Google OAuth flow
-`[POST] /auth/logout` — clear auth cookie
+## Auth (how I set it up)
 
-`[POST] /users/register` — register user
-`[GET] /users/me` — current user profile
-`[PATCH] /users/me` — update profile
-`[DELETE] /users/me` — deactivate self
-`[GET] /users/admin/` — list all users (admin)
-`[POST] /users/admin/register` — create admin (open for first admin)
-`[PATCH] /users/admin/me` — update current admin
-`[GET|PATCH|DELETE] /users/admin/{user_id}` — admin read/update/deactivate user
+- Login sets an HTTP-only `access_token` cookie; Bearer tokens work too.  
+- Expiry comes from `ACCESS_TOKEN_EXPIRE_MINUTES`.  
+- After too many failed logins from the same IP you get `429` and a `Retry-After` header.  
+- First admin bootstrap is handled in the admin routes; after that you need an admin token for admin stuff.
 
-`[GET] /accounts/` — list own accounts
-`[GET] /accounts/{account_id}` — get account (self or admin)
+## Endpoints I actually use
 
-`[POST] /transactions/` — create transaction (user/admin)
-`[GET] /transactions/` — list own transactions
-`[POST] /transactions/{reference}/complete` — mark complete (admin)
-`[POST] /transactions/{reference}/fail` — mark failed (admin)
+**Auth**
 
-## Sample calls (with me as the user)
+- `POST /auth/login` — login (rate limited)  
+- `POST /auth/logout` — clear cookie  
+- `GET /auth/me` — current user  
+- `POST /auth/forgot-password` — sends reset email (generic JSON response either way)  
+- `POST /auth/reset-password` — body: `token`, `new_password`  
+- `POST /auth/request-email-verification` — sends verification email again  
+- `POST /auth/verify-email` — body: `token` (JSON)  
+- `GET /auth/verify-email/click?token=...` — same as above, but meant for the link in the email; verifies then redirects to `FRONTEND_BASE_URL` with `?verify=success` or `?verify=failed` etc.  
+- Google OAuth: `/auth/google/callback` and the login entry point from `auth_google` router
+
+**Users**
+
+- `POST /users/register`  
+- `GET /users/me`, `PATCH /users/me`, `DELETE /users/me`  
+- Admin user routes under `/users/admin/...` as in the code
+
+**Accounts & transactions**
+
+- `GET /accounts/` — list my accounts  
+- `GET /accounts/{account_id}`  
+- `POST /transactions/` — create  
+- `GET /transactions/` — list mine  
+- `POST /transactions/{reference}/complete` and `.../fail` — admin completion flows
+
+Exact paths are easiest to read from `/docs` — I’m not going to duplicate every admin route here.
+
+## Quick curl examples
+
 ```bash
-# Register me
 curl -X POST http://localhost:8000/users/register \
   -H 'Content-Type: application/json' \
-  -d '{"first_name":"Paulson","last_name":"Developer","email":"paulson@example.com","password":"P@ssw0rd!"}'
+  -d '{"first_name":"Paulson","last_name":"Dev","email":"you@example.com","password":"your-password-here"}'
 
-# Login (cookie set in response)
 curl -i -X POST http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"paulson@example.com","password":"P@ssw0rd!"}'
+  -d '{"email":"you@example.com","password":"your-password-here"}'
 
-# Authenticated request using Bearer token
-curl -H 'Authorization: Bearer <token>' http://localhost:8000/users/me
+curl -H 'Authorization: Bearer <paste-token>' http://localhost:8000/users/me
 ```
 
 ## Migrations
-- Create: `alembic revision --autogenerate -m "message"`
-- Apply latest: `alembic upgrade head`
 
-## Testing
-- `tests/` is ready for `pytest` async tests (use `httpx.AsyncClient` + a test DB).
+```bash
+alembic revision --autogenerate -m "describe what changed"
+alembic upgrade head
+```
 
-## Troubleshooting (my quick checks)
-- 429 on login: wait for `Retry-After` or bump limits in `.env`.
-- DB connection errors: double-check `POSTGRES_*` and that PostgreSQL is reachable.
-- No Google creds: drop the Google routes or set valid OAuth values.
+## When something breaks
+
+- **429 on login** — wait or relax the rate limit env vars.  
+- **DB errors** — check `POSTGRES_*` and that Postgres is up.  
+- **No email** — check Resend dashboard logs; confirm `PUBLIC_API_BASE_URL` matches where uvicorn listens; watch server logs for `Resend accepted email` vs `Resend API error`.  
+- **Google OAuth** — invalid or missing keys will show up when you hit those routes; fix the env or leave Google unused.
+
+## Tests
+
+There’s room for `pytest` + `httpx.AsyncClient` against a throwaway database when I get around to adding a proper test harness.
+
+---
+
+That’s the gist. If you’re reading this in the repo, you’re probably me or someone I handed the project to — either way, `/docs` is the source of truth for request bodies.
