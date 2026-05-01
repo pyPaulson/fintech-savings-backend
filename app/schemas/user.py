@@ -11,6 +11,12 @@ def _normalize_email_str(v: object) -> object:
     return v
 
 
+def _normalize_otp_str(v: object) -> object:
+    if isinstance(v, str):
+        return v.strip()
+    return v
+
+
 # Request schema
 class UserCreate(BaseModel):
     first_name: str = Field(..., min_length=1, description="User's first name")
@@ -36,8 +42,21 @@ class UserResponse(BaseModel):
     phone_number: Optional[str] = None
     gender: Optional[GenderEnum] = None
     date_of_birth: Optional[date] = None
+    is_active: bool
+    is_verified: bool
 
     model_config = {"from_attributes": True}
+
+
+class AuthSessionResponse(BaseModel):
+    message: str
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class GoogleTokenLoginRequest(BaseModel):
+    id_token: str = Field(..., min_length=10)
 
 
 class UserLogin(BaseModel):
@@ -68,8 +87,34 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
     new_password: str = Field(..., min_length=8)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        return _normalize_email_str(v)
+
+    @field_validator("otp", mode="before")
+    @classmethod
+    def normalize_otp(cls, v: object) -> object:
+        return _normalize_otp_str(v)
+
+
+class PasswordResetOtpVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        return _normalize_email_str(v)
+
+    @field_validator("otp", mode="before")
+    @classmethod
+    def normalize_otp(cls, v: object) -> object:
+        return _normalize_otp_str(v)
 
 
 class EmailVerificationRequest(BaseModel):
@@ -82,4 +127,15 @@ class EmailVerificationRequest(BaseModel):
 
 
 class EmailVerificationConfirm(BaseModel):
-    token: str
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        return _normalize_email_str(v)
+
+    @field_validator("otp", mode="before")
+    @classmethod
+    def normalize_otp(cls, v: object) -> object:
+        return _normalize_otp_str(v)

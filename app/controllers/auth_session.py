@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 
 from app.core.config import settings
 from app.models.user import User
-from app.schemas.user import UserLogin
+from app.schemas.user import AuthSessionResponse, UserLogin, UserResponse
 from app.utils.jwt import create_access_token, decode_access_token
 from app.utils.security import verify_password
 
@@ -69,6 +69,12 @@ async def login_user(user: UserLogin, db: AsyncSession, response: Response):
                 detail="User is inactive",
             )
 
+        if db_user.auth_provider == "local" and not db_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before signing in",
+            )
+
         access_token = create_access_token({"user_id": db_user.id})
 
         response.set_cookie(
@@ -80,7 +86,12 @@ async def login_user(user: UserLogin, db: AsyncSession, response: Response):
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 
-        return {"message": "Login successful"}
+        user_payload = UserResponse.model_validate(db_user)
+        return AuthSessionResponse(
+            message="Login successful",
+            access_token=access_token,
+            user=user_payload,
+        ).model_dump()
 
     except HTTPException:
         raise

@@ -6,7 +6,11 @@ session, password, and email verification flows into dedicated modules.
 """
 
 from app.controllers.auth_session import get_current_user, login_user
-from app.controllers.auth_password import request_password_reset, reset_password
+from app.controllers.auth_password import (
+    request_password_reset,
+    reset_password,
+    verify_password_reset_otp,
+)
 from app.controllers.auth_verification import (
     confirm_email_verification,
     request_email_verification,
@@ -16,6 +20,7 @@ __all__ = [
     "get_current_user",
     "login_user",
     "request_password_reset",
+    "verify_password_reset_otp",
     "reset_password",
     "confirm_email_verification",
     "request_email_verification",

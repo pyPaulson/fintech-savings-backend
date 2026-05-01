@@ -13,7 +13,7 @@ from app.services.account_service import create_default_accounts
 from app.services.email_delivery import send_verification_email
 from app.schemas.user import UserCreate, UserUpdate
 from app.utils.email_sender import EmailSendError
-from app.utils.jwt import create_email_verification_token
+from app.utils.otp import expires_in_minutes, generate_otp, hash_otp, utc_now
 from app.utils.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -69,16 +69,34 @@ async def create_user(user: UserCreate, db: AsyncSession, *, as_admin: bool = Fa
         await db.refresh(new_user)
 
         if not as_admin and not new_user.is_verified:
-            token = create_email_verification_token({"user_id": new_user.id})
             try:
+                otp = generate_otp()
+                new_user.email_verification_otp_hash = hash_otp(
+                    purpose="email_verification",
+                    email=new_user.email,
+                    otp=otp,
+                )
+                new_user.email_verification_otp_expires_at = expires_in_minutes(
+                    settings.EMAIL_VERIFICATION_OTP_EXPIRE_MINUTES
+                )
+                new_user.email_verification_otp_sent_at = utc_now()
+                db.add(new_user)
+                await db.commit()
+                await db.refresh(new_user)
                 await send_verification_email(
                     to_email=new_user.email,
                     recipient_name=new_user.first_name,
-                    token=token,
+                    otp=otp,
                 )
             except EmailSendError:
                 logger.exception(
                     "Failed to send verification email after signup user_id=%s",
+                    new_user.id,
+                )
+            except SQLAlchemyError:
+                await db.rollback()
+                logger.exception(
+                    "Failed to save verification OTP after signup user_id=%s",
                     new_user.id,
                 )
             except Exception:
