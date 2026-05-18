@@ -3,17 +3,18 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_DB: str
-    POSTGRES_HOST: str
-    POSTGRES_PORT: str
+    DATABASE_URL: str = ""
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = ""
+    POSTGRES_HOST: str = ""
+    POSTGRES_PORT: str = ""
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
     GOOGLE_IOS_CLIENT_ID: str = ""
     GOOGLE_ANDROID_CLIENT_ID: str = ""
     GOOGLE_WEB_CLIENT_ID: str = ""
@@ -48,6 +49,28 @@ class Settings(BaseSettings):
         env_file = ".env"
 
     @property
+    def database_url(self) -> str:
+        raw = (self.DATABASE_URL or "").strip()
+        if raw:
+            if raw.startswith("postgres://"):
+                return f"postgresql://{raw[len('postgres://'):]}"
+            return raw
+
+        return (
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @property
+    def database_url_async(self) -> str:
+        url = self.database_url
+        if url.startswith("postgresql+asyncpg://"):
+            return url
+        if url.startswith("postgresql://"):
+            return f"postgresql+asyncpg://{url[len('postgresql://'):]}"
+        return url
+
+    @property
     def cors_origins(self) -> list[str]:
         raw = (self.BACKEND_CORS_ORIGINS or "").strip()
         if not raw:
@@ -72,6 +95,22 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _email_config_consistent(self) -> "Settings":
+        has_database_url = bool((self.DATABASE_URL or "").strip())
+        has_discrete_db_config = all(
+            (
+                self.POSTGRES_USER.strip(),
+                self.POSTGRES_PASSWORD.strip(),
+                self.POSTGRES_DB.strip(),
+                self.POSTGRES_HOST.strip(),
+                self.POSTGRES_PORT.strip(),
+            )
+        )
+
+        if not (has_database_url or has_discrete_db_config):
+            raise ValueError(
+                "Set DATABASE_URL or all POSTGRES_* environment variables"
+            )
+
         if self.EMAIL_ENABLED and not (self.BREVO_API_KEY or "").strip():
             raise ValueError("BREVO_API_KEY is required when EMAIL_ENABLED is true")
         return self

@@ -45,3 +45,8 @@ app.include_router(goal.router)
 @app.get("/")
 async def root():
     return {"message": "Backend is running!"}
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}

@@ -99,6 +99,7 @@ Create `.env` in the project root.
 
 ```env
 # Database
+DATABASE_URL=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 POSTGRES_DB=
@@ -122,6 +123,8 @@ OTP_RESEND_COOLDOWN_SECONDS=60
 
 # Google (optional for now)
 GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
 GOOGLE_WEB_CLIENT_ID=
 GOOGLE_IOS_CLIENT_ID=
 GOOGLE_ANDROID_CLIENT_ID=
@@ -130,6 +133,7 @@ GOOGLE_EXPO_CLIENT_ID=
 
 Notes:
 
+- You can use either `DATABASE_URL` or the individual `POSTGRES_*` values.
 - `EMAIL_FROM` must be a verified sender in Brevo.
 - On a real phone, the frontend should call your machine using your LAN IP, not `127.0.0.1`.
 - If you are not testing email locally, set `EMAIL_ENABLED=false`.
@@ -158,6 +162,35 @@ Docs:
 alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
+
+## Deploy On Render With Blueprint
+
+This repo includes [render.yaml](/Users/paul/Desktop/Web_Learn/Projects/fintech-savings-backend/render.yaml:1) so Render can create both:
+
+- a Python web service
+- a managed PostgreSQL database
+
+What the Blueprint does:
+
+- provisions a Render Postgres database named `growfund-db`
+- injects `DATABASE_URL` from that database into the web service
+- runs the API with `uvicorn`
+- applies migrations at startup with `alembic upgrade head`
+- disables email by default so the first deploy works even before Brevo is configured
+
+Before you click deploy in Render:
+
+- push this repo to GitHub, GitLab, or Bitbucket
+- make sure the branch you want to deploy contains `render.yaml`
+- decide what you want for `BACKEND_CORS_ORIGINS`
+  a temporary value of `*` is fine for testing, but use your real frontend URL in production
+
+After the first deploy:
+
+- open the web service in Render and copy its public URL
+- test `GET /healthz` and `GET /docs`
+- if you want email flows, set `EMAIL_ENABLED=true` and add `BREVO_API_KEY`, `EMAIL_FROM`, and `FRONTEND_BASE_URL`
+- if you want Google auth, add the Google client env vars and update the redirect URI
 
 ## Email Templates
 

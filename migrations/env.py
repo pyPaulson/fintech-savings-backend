@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from alembic import context
 
 import asyncio
+from app.core.config import settings
 from app.models.base import Base
 # Ensure models are imported so their tables are registered with Base.metadata
 from app.models import user  # noqa: F401
@@ -13,7 +14,10 @@ from app.models import transaction  # noqa: F401
 from app.models import savings_goal  # noqa: F401
 
 config = context.config
-fileConfig(config.config_file_name)
+config.set_main_option("sqlalchemy.url", settings.database_url_async)
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 target_metadata = Base.metadata  # tells Alembic about our models
 
 
