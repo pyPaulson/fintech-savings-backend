@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from email.utils import parseaddr
 from typing import Any
 
 import httpx
@@ -9,11 +10,21 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-RESEND_API_URL = "https://api.resend.com/emails"
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 class EmailSendError(Exception):
-    """Outbound email could not be sent via Resend."""
+    """Outbound email could not be sent via Brevo."""
+
+
+def _parse_sender(raw_sender: str) -> dict[str, str]:
+    name, email = parseaddr(raw_sender.strip())
+    if not email:
+        raise EmailSendError("EMAIL_FROM must contain a valid sender email")
+    sender = {"email": email}
+    if name:
+        sender["name"] = name
+    return sender
 
 
 async def send_email(
@@ -27,48 +38,51 @@ async def send_email(
         logger.debug("Email disabled; skipping outbound message to %s", to)
         return
 
-    key = (settings.RESEND_API_KEY or "").strip()
+    key = (settings.BREVO_API_KEY or "").strip()
     if not key:
-        logger.error("RESEND_API_KEY is empty; cannot send email to %s", to)
-        raise EmailSendError("RESEND_API_KEY is not configured")
+        logger.error("BREVO_API_KEY is empty; cannot send email to %s", to)
+        raise EmailSendError("BREVO_API_KEY is not configured")
 
     payload: dict[str, Any] = {
-        "from": settings.EMAIL_FROM.strip(),
-        "to": [to],
+        "sender": _parse_sender(settings.EMAIL_FROM),
+        "to": [{"email": to}],
         "subject": subject,
-        "html": html,
+        "htmlContent": html,
     }
     if reply_to:
-        payload["reply_to"] = reply_to
+        _, reply_email = parseaddr(reply_to.strip())
+        if reply_email:
+            payload["replyTo"] = {"email": reply_email}
 
     timeout = httpx.Timeout(settings.EMAIL_REQUEST_TIMEOUT_SECONDS)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                RESEND_API_URL,
+                BREVO_API_URL,
                 headers={
-                    "Authorization": f"Bearer {key}",
+                    "accept": "application/json",
+                    "api-key": key,
                     "Content-Type": "application/json",
                 },
                 json=payload,
             )
     except httpx.RequestError as exc:
-        logger.exception("Resend HTTP request failed for recipient=%s", to)
-        raise EmailSendError("Could not reach Resend API") from exc
+        logger.exception("Brevo HTTP request failed for recipient=%s", to)
+        raise EmailSendError("Could not reach Brevo API") from exc
 
     if response.is_success:
-        resend_id: str | None = None
+        message_id: str | None = None
         try:
             data = response.json()
             if isinstance(data, dict):
-                rid = data.get("id")
-                resend_id = str(rid) if rid is not None else None
+                rid = data.get("messageId")
+                message_id = str(rid) if rid is not None else None
         except ValueError:
             pass
         logger.info(
-            "Resend accepted email: id=%s recipient=%s subject=%r",
-            resend_id,
+            "Brevo accepted email: message_id=%s recipient=%s subject=%r",
+            message_id,
             to,
             subject[:80],
         )
@@ -84,10 +98,10 @@ async def send_email(
         detail = str(body.get("message") or body.get("error") or "")
 
     logger.error(
-        "Resend API error: status=%s recipient=%s detail=%s body=%s",
+        "Brevo API error: status=%s recipient=%s detail=%s body=%s",
         response.status_code,
         to,
         detail,
         body,
     )
-    raise EmailSendError(f"Resend returned HTTP {response.status_code}")
+    raise EmailSendError(f"Brevo returned HTTP {response.status_code}")

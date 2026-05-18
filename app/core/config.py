@@ -3,45 +3,116 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_DB: str
-    POSTGRES_HOST: str
-    POSTGRES_PORT: str
+    DATABASE_URL: str = ""
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = ""
+    POSTGRES_HOST: str = ""
+    POSTGRES_PORT: str = ""
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+    GOOGLE_IOS_CLIENT_ID: str = ""
+    GOOGLE_ANDROID_CLIENT_ID: str = ""
+    GOOGLE_WEB_CLIENT_ID: str = ""
+    GOOGLE_EXPO_CLIENT_ID: str = ""
 
     # Rate limiting
     RATE_LIMIT_LOGIN_ATTEMPTS: int = 5
     RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 300
 
     # Product / email
-    APP_NAME: str = "Fintech Savings"
+    APP_NAME: str = "GrowFund"
 
-    # Resend (https://resend.com/docs) — no domain needed for testing:
-    # Use onboarding@resend.dev in EMAIL_FROM; the app user's email must match your Resend login.
+    # Brevo transactional email
     EMAIL_ENABLED: bool = True
-    RESEND_API_KEY: str = ""
-    # Override in production with a verified domain, e.g. "Fintech Savings <noreply@yourdomain.com>"
-    EMAIL_FROM: str = "Fintech Savings <onboarding@resend.dev>"
+    BREVO_API_KEY: str = ""
+    EMAIL_FROM: str = "GrowFund <noreply@yourdomain.com>"
     FRONTEND_BASE_URL: str = "http://localhost:3000"
-    # Public URL of this API (used in verification emails). Must be reachable from the user’s browser.
-    PUBLIC_API_BASE_URL: str = "http://localhost:8000"
-    EMAIL_VERIFICATION_PATH: str = "/verify-email"
-    PASSWORD_RESET_PATH: str = "/reset-password"
     EMAIL_REQUEST_TIMEOUT_SECONDS: float = 20.0
+    EMAIL_VERIFICATION_OTP_EXPIRE_MINUTES: int = 10
+    PASSWORD_RESET_OTP_EXPIRE_MINUTES: int = 10
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+
+    # App clients
+    BACKEND_CORS_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:8081,"
+        "http://127.0.0.1:8081"
+    )
 
     class Config:
         env_file = ".env"
 
+    @property
+    def database_url(self) -> str:
+        raw = (self.DATABASE_URL or "").strip()
+        if raw:
+            if raw.startswith("postgres://"):
+                return f"postgresql://{raw[len('postgres://'):]}"
+            return raw
+
+        return (
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @property
+    def database_url_async(self) -> str:
+        url = self.database_url
+        if url.startswith("postgresql+asyncpg://"):
+            return url
+        if url.startswith("postgresql://"):
+            return f"postgresql+asyncpg://{url[len('postgresql://'):]}"
+        return url
+
+    @property
+    def cors_origins(self) -> list[str]:
+        raw = (self.BACKEND_CORS_ORIGINS or "").strip()
+        if not raw:
+            return []
+        if raw == "*":
+            return ["*"]
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    @property
+    def google_allowed_client_ids(self) -> set[str]:
+        return {
+            value.strip()
+            for value in {
+                self.GOOGLE_CLIENT_ID,
+                self.GOOGLE_IOS_CLIENT_ID,
+                self.GOOGLE_ANDROID_CLIENT_ID,
+                self.GOOGLE_WEB_CLIENT_ID,
+                self.GOOGLE_EXPO_CLIENT_ID,
+            }
+            if value and value.strip()
+        }
+
     @model_validator(mode="after")
     def _email_config_consistent(self) -> "Settings":
-        if self.EMAIL_ENABLED and not (self.RESEND_API_KEY or "").strip():
-            raise ValueError("RESEND_API_KEY is required when EMAIL_ENABLED is true")
+        has_database_url = bool((self.DATABASE_URL or "").strip())
+        has_discrete_db_config = all(
+            (
+                self.POSTGRES_USER.strip(),
+                self.POSTGRES_PASSWORD.strip(),
+                self.POSTGRES_DB.strip(),
+                self.POSTGRES_HOST.strip(),
+                self.POSTGRES_PORT.strip(),
+            )
+        )
+
+        if not (has_database_url or has_discrete_db_config):
+            raise ValueError(
+                "Set DATABASE_URL or all POSTGRES_* environment variables"
+            )
+
+        if self.EMAIL_ENABLED and not (self.BREVO_API_KEY or "").strip():
+            raise ValueError("BREVO_API_KEY is required when EMAIL_ENABLED is true")
         return self
 
 

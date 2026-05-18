@@ -1,41 +1,105 @@
-# Fintech Savings Backend
+# GrowFund Backend
 
-I’m Paulson. This repo is the API for a savings-style app: users, accounts (flexi, emergency, etc.), transactions, and auth that doesn’t feel bolted on. I built it with FastAPI and PostgreSQL, async end to end, because I didn’t want the boring stuff to get slow when traffic shows up.
+FastAPI backend for `GrowFund`, a savings-first fintech product with room for investments later.
 
-## What’s in the stack
+The current product logic is centered on:
 
-- Python 3.13, FastAPI, Pydantic v2  
-- Async SQLAlchemy + asyncpg  
-- Alembic for schema changes  
-- JWTs (HTTP-only cookie or `Authorization: Bearer`)  
-- Resend + Jinja2 templates for transactional email (verify email, password reset)  
-- Google OAuth wired up if you fill the Google env vars  
-- In-process rate limiting on login so password stuffing isn’t free
+- default `Flexi` and `Emergency` accounts created for every new user
+- user-created goal accounts
+- optional locked saving behavior for stronger discipline
+- OTP-based email verification and password reset
+- transactional email through Brevo
 
-## How I organized the code
+## Product Logic
 
-- `app/main.py` — app factory, lifespan, middleware  
-- `app/routes/` — routers (auth, users, accounts, transactions, admin)  
-- `app/controllers/` — what each request actually does  
-- `app/services/` — things like creating transactions and default accounts  
-- `app/models/` — SQLAlchemy models and enums  
-- `app/schemas/` — request/response shapes  
-- `app/templates/` — HTML email templates  
-- `app/database/session.py` — async engine and sessions  
-- `migrations/` — Alembic
+When a user registers:
 
-## Before you run anything
+- a `Flexi` account is created automatically
+- an `Emergency` account is created automatically
 
-- Python 3.13  
-- PostgreSQL running and reachable  
-- I usually bump pip first: `pip install --upgrade pip`
+After that, the user can:
 
-## Environment variables
+- create one or more goal accounts
+- choose whether a goal should remain flexible or be treated like locked savings in the UI/product flow
+- fund a goal directly
+- optionally route part of a goal deposit into `Emergency`
+  the intended product rule is up to `30%`
+- withdraw from `Emergency` once per month
 
-Put a `.env` in the project root. Here’s what I use (fill in your own secrets):
+Investment is planned as a later extension. The current backend is savings-focused.
+
+## Stack
+
+- Python `3.13`
+- FastAPI
+- SQLAlchemy async
+- PostgreSQL
+- Alembic
+- Pydantic v2
+- JWT auth
+- Jinja2 email templates
+- Brevo transactional email
+
+## Main Areas
+
+- [app/main.py](/Users/paul/Desktop/Web_Learn/Projects/fintech-savings-backend/app/main.py:1): app setup, CORS, session middleware
+- `app/routes/`: API routes
+- `app/controllers/`: request handling
+- `app/services/`: domain services
+- `app/models/`: database models and enums
+- `app/schemas/`: request and response schemas
+- `app/templates/`: transactional email templates
+- `migrations/`: Alembic migrations
+
+## Auth Features
+
+Implemented auth flows:
+
+- register with email/password
+- login with JWT bearer token
+- OTP email verification
+- forgot password with email OTP
+- reset password with OTP + new password
+- success emails after verification and password reset
+
+There is backend support for Google token login, but the frontend Google flow is intentionally paused right now because the current frontend testing is happening in Expo Go.
+
+## Key Routes
+
+Auth:
+
+- `POST /users/register`
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /auth/me`
+- `POST /auth/request-email-verification`
+- `POST /auth/verify-email`
+- `POST /auth/forgot-password`
+- `POST /auth/verify-reset-otp`
+- `POST /auth/reset-password`
+- `POST /auth/google/mobile`
+
+Savings data:
+
+- `GET /accounts`
+- `GET /accounts/{account_id}`
+- `GET /transactions`
+- `POST /transactions`
+- `GET /goals`
+- `POST /goals`
+- `GET /goals/{goal_id}`
+- `PATCH /goals/{goal_id}`
+- `POST /goals/{goal_id}/deposit`
+
+Use `/docs` for the live OpenAPI reference.
+
+## Environment Variables
+
+Create `.env` in the project root.
 
 ```env
 # Database
+DATABASE_URL=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 POSTGRES_DB=
@@ -43,114 +107,119 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 
 # JWT
-SECRET_KEY=change-me-to-something-long-and-random
+SECRET_KEY=change-me
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 
-# Google OAuth (only if you use Google login)
+# Email / Brevo
+EMAIL_ENABLED=true
+BREVO_API_KEY=
+EMAIL_FROM=GrowFund <noreply@yourdomain.com>
+FRONTEND_BASE_URL=http://localhost:8081
+BACKEND_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081
+EMAIL_VERIFICATION_OTP_EXPIRE_MINUTES=10
+PASSWORD_RESET_OTP_EXPIRE_MINUTES=10
+OTP_RESEND_COOLDOWN_SECONDS=60
+
+# Google (optional for now)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
-
-# Rate limits (optional; defaults are fine)
-RATE_LIMIT_LOGIN_ATTEMPTS=5
-RATE_LIMIT_LOGIN_WINDOW_SECONDS=300
-
-# Email (Resend) — if EMAIL_ENABLED is true, RESEND_API_KEY is required
-EMAIL_ENABLED=true
-RESEND_API_KEY=re_...
-EMAIL_FROM=Fintech Savings <onboarding@resend.dev>
-FRONTEND_BASE_URL=http://localhost:3000
-PUBLIC_API_BASE_URL=http://localhost:8000
+GOOGLE_REDIRECT_URI=
+GOOGLE_WEB_CLIENT_ID=
+GOOGLE_IOS_CLIENT_ID=
+GOOGLE_ANDROID_CLIENT_ID=
+GOOGLE_EXPO_CLIENT_ID=
 ```
 
-A few notes from my own testing:
+Notes:
 
-- With `onboarding@resend.dev`, Resend only delivers test mail to the address you used to sign up on resend.com — so register in the app with that same email, or verify a domain and change `EMAIL_FROM` for real sends.  
-- `PUBLIC_API_BASE_URL` is the link the verification email uses (`/auth/verify-email/click`). It has to be a URL your browser can open (same host/port as your API).  
-- If you’re not sending mail locally, set `EMAIL_ENABLED=false` and you can skip the Resend key.
+- You can use either `DATABASE_URL` or the individual `POSTGRES_*` values.
+- `EMAIL_FROM` must be a verified sender in Brevo.
+- On a real phone, the frontend should call your machine using your LAN IP, not `127.0.0.1`.
+- If you are not testing email locally, set `EMAIL_ENABLED=false`.
 
-## Run it locally
+## Run Locally
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-API: http://127.0.0.1:8000 — OpenAPI docs at `/docs`.
+Backend base URL:
 
-## Auth (how I set it up)
+- `http://127.0.0.1:8000`
 
-- Login sets an HTTP-only `access_token` cookie; Bearer tokens work too.  
-- Expiry comes from `ACCESS_TOKEN_EXPIRE_MINUTES`.  
-- After too many failed logins from the same IP you get `429` and a `Retry-After` header.  
-- First admin bootstrap is handled in the admin routes; after that you need an admin token for admin stuff.
+Docs:
 
-## Endpoints I actually use
-
-**Auth**
-
-- `POST /auth/login` — login (rate limited)  
-- `POST /auth/logout` — clear cookie  
-- `GET /auth/me` — current user  
-- `POST /auth/forgot-password` — sends reset email (generic JSON response either way)  
-- `POST /auth/reset-password` — body: `token`, `new_password`  
-- `POST /auth/request-email-verification` — sends verification email again  
-- `POST /auth/verify-email` — body: `token` (JSON)  
-- `GET /auth/verify-email/click?token=...` — same as above, but meant for the link in the email; verifies then redirects to `FRONTEND_BASE_URL` with `?verify=success` or `?verify=failed` etc.  
-- Google OAuth: `/auth/google/callback` and the login entry point from `auth_google` router
-
-**Users**
-
-- `POST /users/register`  
-- `GET /users/me`, `PATCH /users/me`, `DELETE /users/me`  
-- Admin user routes under `/users/admin/...` as in the code
-
-**Accounts & transactions**
-
-- `GET /accounts/` — list my accounts  
-- `GET /accounts/{account_id}`  
-- `POST /transactions/` — create  
-- `GET /transactions/` — list mine  
-- `POST /transactions/{reference}/complete` and `.../fail` — admin completion flows
-
-Exact paths are easiest to read from `/docs` — I’m not going to duplicate every admin route here.
-
-## Quick curl examples
-
-```bash
-curl -X POST http://localhost:8000/users/register \
-  -H 'Content-Type: application/json' \
-  -d '{"first_name":"Paulson","last_name":"Dev","email":"you@example.com","password":"your-password-here"}'
-
-curl -i -X POST http://localhost:8000/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"your-password-here"}'
-
-curl -H 'Authorization: Bearer <paste-token>' http://localhost:8000/users/me
-```
+- `http://127.0.0.1:8000/docs`
 
 ## Migrations
 
 ```bash
-alembic revision --autogenerate -m "describe what changed"
+alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
 
-## When something breaks
+## Deploy On Render With Blueprint
 
-- **429 on login** — wait or relax the rate limit env vars.  
-- **DB errors** — check `POSTGRES_*` and that Postgres is up.  
-- **No email** — check Resend dashboard logs; confirm `PUBLIC_API_BASE_URL` matches where uvicorn listens; watch server logs for `Resend accepted email` vs `Resend API error`.  
-- **Google OAuth** — invalid or missing keys will show up when you hit those routes; fix the env or leave Google unused.
+This repo includes [render.yaml](/Users/paul/Desktop/Web_Learn/Projects/fintech-savings-backend/render.yaml:1) so Render can create both:
 
-## Tests
+- a Python web service
+- a managed PostgreSQL database
 
-There’s room for `pytest` + `httpx.AsyncClient` against a throwaway database when I get around to adding a proper test harness.
+What the Blueprint does:
 
----
+- provisions a Render Postgres database named `growfund-db`
+- injects `DATABASE_URL` from that database into the web service
+- runs the API with `uvicorn`
+- applies migrations at startup with `alembic upgrade head`
+- disables email by default so the first deploy works even before Brevo is configured
 
-That’s the gist. If you’re reading this in the repo, you’re probably me or someone I handed the project to — either way, `/docs` is the source of truth for request bodies.
+Before you click deploy in Render:
+
+- push this repo to GitHub, GitLab, or Bitbucket
+- make sure the branch you want to deploy contains `render.yaml`
+- decide what you want for `BACKEND_CORS_ORIGINS`
+  a temporary value of `*` is fine for testing, but use your real frontend URL in production
+
+After the first deploy:
+
+- open the web service in Render and copy its public URL
+- test `GET /healthz` and `GET /docs`
+- if you want email flows, set `EMAIL_ENABLED=true` and add `BREVO_API_KEY`, `EMAIL_FROM`, and `FRONTEND_BASE_URL`
+- if you want Google auth, add the Google client env vars and update the redirect URI
+
+## Email Templates
+
+Current templates live in `app/templates/` and include:
+
+- email verification OTP
+- password reset OTP
+- email verified success
+- password reset success
+
+They are styled to match the GrowFund product direction.
+
+## Troubleshooting
+
+- No email arrives:
+  check Brevo sender verification, API key, and backend logs.
+- OTP not stored:
+  confirm the user actually exists before requesting verification/reset flows.
+- Backend fails on startup:
+  reinstall dependencies with `pip install -r requirements.txt`.
+- Mobile app cannot connect:
+  use your machine's LAN IP in the frontend env.
+
+## Status
+
+This backend is in a good place for savings flows, auth, and dashboard data.
+
+The next major product area is investment logic:
+
+- deciding how locked savings transitions into investable balances
+- defining risk buckets or products
+- building transfer rules between savings and investments

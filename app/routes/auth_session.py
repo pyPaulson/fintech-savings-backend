@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.controllers.auth_session import get_current_user, login_user
 from app.database.session import get_db
 from app.core.config import settings
-from app.schemas.user import UserLogin, UserResponse
+from app.schemas.user import AuthSessionResponse, UserLogin, UserResponse
 from app.utils.rate_limit import check_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Auth • Session"])
@@ -26,14 +26,14 @@ async def _rate_limit_login(request: Request):
     )
 
 
-@router.post("/login")
+@router.post("/login", response_model=AuthSessionResponse)
 async def login(
     user: UserLogin,
     response: Response,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(_rate_limit_login),
 ):
-    """Log in a user and issue a JWT cookie."""
+    """Log in a user and issue a JWT for mobile clients and a cookie for browser clients."""
     try:
         return await login_user(user, db, response)
     except HTTPException:

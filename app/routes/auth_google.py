@@ -3,9 +3,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.controllers.google_auth import handle_google_user
+from app.controllers.google_auth import handle_google_user, login_with_google_token
 from app.core.config import settings
 from app.database.session import get_db
+from app.schemas.user import AuthSessionResponse, GoogleTokenLoginRequest
 from app.utils.google_auth import oauth
 
 router = APIRouter(prefix="/auth/google", tags=["Auth • Google"])
@@ -55,6 +56,23 @@ async def google_callback(
         raise
     except Exception:
         logger.exception("Unhandled error during Google login callback")
+        raise HTTPException(
+            status_code=500,
+            detail="Google login failed",
+        )
+
+
+@router.post("/mobile", response_model=AuthSessionResponse)
+async def google_mobile_login(
+    payload: GoogleTokenLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await login_with_google_token(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unhandled error during mobile Google login")
         raise HTTPException(
             status_code=500,
             detail="Google login failed",

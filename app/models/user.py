@@ -34,6 +34,13 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
+    email_verification_otp_hash = Column(String, nullable=True)
+    email_verification_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    email_verification_otp_sent_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_otp_hash = Column(String, nullable=True)
+    password_reset_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_otp_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     accounts = relationship("Account", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
+    savings_goals = relationship("SavingsGoal", back_populates="user")

@@ -1,13 +1,16 @@
 import logging
+import secrets
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-import secrets
 
+from app.services.account_service import create_default_accounts
 from app.models.user import User
+from app.schemas.user import AuthSessionResponse, GoogleTokenLoginRequest, UserResponse
+from app.utils.google_tokens import verify_google_identity_token
 from app.utils.jwt import create_access_token
 from app.utils.security import hash_password
 
@@ -57,8 +60,29 @@ async def handle_google_user(user_info: dict, db: AsyncSession):
             )
 
             db.add(user)
+            await db.flush()
+            await create_default_accounts(user.id, db)
             await db.commit()
             await db.refresh(user)
+
+        if existing_user:
+            changed = False
+            if google_id and not user.google_id:
+                user.google_id = google_id
+                changed = True
+            if picture and user.profile_picture != picture:
+                user.profile_picture = picture
+                changed = True
+            if not user.is_verified:
+                user.is_verified = True
+                changed = True
+            if not user.auth_provider:
+                user.auth_provider = "google"
+                changed = True
+            if changed:
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
 
         token = create_access_token({"user_id": user.id})
         return user, token
@@ -87,3 +111,21 @@ async def handle_google_user(user_info: dict, db: AsyncSession):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Google authentication failed",
         )
+
+
+async def login_with_google_token(payload: GoogleTokenLoginRequest, db: AsyncSession):
+    try:
+        user_info = verify_google_identity_token(payload.id_token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    user, token = await handle_google_user(user_info, db)
+    user_payload = UserResponse.model_validate(user)
+    return AuthSessionResponse(
+        message="Google login successful",
+        access_token=token,
+        user=user_payload,
+    ).model_dump()
