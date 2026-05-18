@@ -39,6 +39,6 @@ services:
         value: ""
 databases:
   - name: growfund-db
-    plan: basic-256mb
+    plan: free
     databaseName: growfund
     user: growfund
